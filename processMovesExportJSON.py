@@ -2,23 +2,20 @@
 """
 processMovesExportJSON.py
 
-Script to process the JSON output of moves-export.com into a 
-structured, 2-dimensional table for export in CSV or database tables.
+Script to process the JSON output of moves-export.com into a structured, 2-dimensional table for export in CSV or database tables.
 
 Author: Konstantin Greger
-Date:  2014/02/10
-
 """
 
 import json
 import time
-from pytz import timezone
-import pytz
+import datetime
 
 # initialization
-utc = pytz.utc
-#targetTimeZone = timezone('Asia/Tokyo') # set this to the timezone you intend to use in your I/O (cf. http://stackoverflow.com/questions/13866926/python-pytz-list-of-timezones for a list of pytz timezones)
-inputFileName = "jsonstoryline_20140205.json"
+UTCadjust = datetime.timedelta(hours=9)         # set this to the local timezone of data collection (e.g.: UTC+9 for JST)
+csvSeparator = ";"                              # set this to the separator you need in the output
+inputFileName = "jsonstoryline_20140205.json"   # set this to the path and filename of the JSON string to process
+
 f = open(inputFileName)
 data = json.load(f)
 json = data[0]['segments']
@@ -29,16 +26,22 @@ tripID = 1
 for segment in json:
     if segment['type'] == "place":
         # stationarity event
-        subtripID = 1 # dummy value
-        trackpointID = 1 # dummy value
+        subtripID = 1           # dummy value
+        trackpointID = 1        # dummy value
         stype = segment['type']
-        mode = segment['type'] # dummy value
+        mode = segment['type']  # dummy value
         lon = segment['place']['location']['lon']
         lat = segment['place']['location']['lat']
-        timestamp_ = time.strptime(str(segment['startTime']), "%Y%m%dT%H%M%SZ")
-        timestamp__ = time.strftime("%Y-%m-%d %H:%M:%S", timestamp_)
-        data = (str(ID),str(tripID),str(subtripID),str(trackpointID),str(stype),str(mode),str(lon),str(lat),str(timestamp__))
-        print ";".join(data)
+        timestamp = datetime.datetime.strptime(str(segment['startTime']), "%Y%m%dT%H%M%SZ")
+        if tripID == 1:
+            # special treatment for a day's first dataset
+            timestamp = datetime.datetime.strptime(data[0]['date'], "%Y%m%d")
+        else:
+            # adjust UTC timestamp by timezone offset
+            timestamp = timestamp + UTCadjust
+        timestamps = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+        data = (str(ID),str(tripID),str(subtripID),str(trackpointID),str(stype),str(mode),str(lon),str(lat),str(timestamps))
+        print csvSeparator.join(data)
         ID += 1
     elif segment['type'] == "move":
         # actual movement
@@ -48,12 +51,18 @@ for segment in json:
             mode = activities['activity']
             trackpointID = 1
             for trackpoints in activities['trackPoints']:
-                timestamp_ = time.strptime(str(trackpoints['time']), "%Y%m%dT%H%M%SZ")
-                timestamp__ = time.strftime("%Y-%m-%d %H:%M:%S", timestamp_)
                 lon = trackpoints['lon']
                 lat = trackpoints['lat']
-                data = (str(ID),str(tripID),str(subtripID),str(trackpointID),str(stype),str(mode),str(lon),str(lat),str(timestamp__))
-                print ";".join(data)
+                timestamp = datetime.datetime.strptime(str(trackpoints['time']), "%Y%m%dT%H%M%SZ")
+                if tripID == 1:
+                    # special treatment for a day's first dataset
+                    timestamp = datetime.datetime.strptime(data[0]['date'], "%Y%m%d")                    
+                else:
+                    # adjust UTC timestamp by timezone offset
+                    timestamp = timestamp + UTCadjust
+                timestamps = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+                data = (str(ID),str(tripID),str(subtripID),str(trackpointID),str(stype),str(mode),str(lon),str(lat),str(timestamps))
+                print csvSeparator.join(data)
                 trackpointID += 1
                 ID += 1
             subtripID += 1
