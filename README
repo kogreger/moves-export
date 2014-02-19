@@ -1,1 +1,2 @@
-Script to process the JSON output of moves-export.com into a structured, 2-dimensional table for export in CSV or database tables.
+Script to process the JSON output of moves-export.com into a structured, 
+2-dimensional table for export in CSV or database tables.
