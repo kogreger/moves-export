@@ -2,20 +2,20 @@
 """
 processMovesExportJSON.py
 
-Script to process the JSON output of moves-export.com into a structured, 2-dimensional table for export in CSV or database tables.
+Script to process the JSON output of moves-export.com into a structured, 
+2-dimensional table for export in CSV or database tables.
 
 Author: Konstantin Greger
 """
 
-import sys
 import json
 import datetime
 
 # initialization
-UTCadjust = 9                                   # set this to the local timezone of data collection (e.g.: UTC+9 for JST)
-csvSeparator = ";"                              # set this to the separator you need in the output
-inputFileName = "jsonstoryline_20140205.json"   # set this to the path and filename of the JSON string to process
-outputFileName = "storyline_20140205.csv"       # set this to the path and filename of the CSV output file
+UTCadjust = 9                                   # local timezone of data (e.g.: UTC+9 for JST)
+csvSeparator = ";"                              # separator to use in output
+inputFileName = "jsonstoryline_20140206.json"   # path and filename of the input JSON string
+outputFileName = "storyline_20140206.csv"       # path and filename of the CSV output file
 
 inputFile = open(inputFileName)
 data = json.load(inputFile)
@@ -23,6 +23,8 @@ json = data[0]['segments']
 inputFile.close()
 
 outputFile = open(outputFileName, "w")
+outputString = ("ID","tripID","subtripID","trackpointID","type","mode","lon","lat","timestamp","origin")
+outputFile.write(csvSeparator.join(outputString) + "\n")
 
 # parse data from JSON string into CSV format
 ID = 1
@@ -31,32 +33,34 @@ for segment in json:
     if segment['type'] == "place":
         # stationarity event
         subtripID = 1           # dummy value
-        trackpointID = 1        # dummy value
+        trackpointID = 1
         stype = segment['type']
         mode = segment['type']  # dummy value
         lon = segment['place']['location']['lon']
         lat = segment['place']['location']['lat']
         timestamp = datetime.datetime.strptime(str(segment['startTime']), "%Y%m%dT%H%M%SZ")
+        # adjust UTC timestamp by timezone offset
+        timestamp += datetime.timedelta(hours = UTCadjust)
         if ID == 1:
             # special treatment for a day's first dataset
             timestamp = datetime.datetime.strptime(data[0]['date'], "%Y%m%d")
-        else:
-            # adjust UTC timestamp by timezone offset
-            timestamp += datetime.timedelta(hours = UTCadjust)
         timestamps = timestamp.strftime("%Y-%m-%d %H:%M:%S")
-        data = (str(ID),str(tripID),str(subtripID),str(trackpointID),str(stype),str(mode),str(lon),str(lat),str(timestamps),"d")
-        outputFile.write(csvSeparator.join(data) + "\n")
+        outputString = (str(ID),str(tripID),str(subtripID),str(trackpointID),str(stype),str(mode),str(lon),str(lat),str(timestamps),"d")
+        outputFile.write(csvSeparator.join(outputString) + "\n")
         ID += 1
+        trackpointID += 1
         # synthesize intermediate stationary timesteps
         endtimestamp = datetime.datetime.strptime(str(segment['endTime']), "%Y%m%dT%H%M%SZ")
         endtimestamp += datetime.timedelta(hours = UTCadjust)
         while timestamp < endtimestamp:
             timestamp += datetime.timedelta(seconds = 1)
+            if timestamp >= datetime.datetime.strptime(data[0]['date'], "%Y%m%d") + datetime.timedelta(days = 1):
+                break               # stop at 23:59:59
             timestamps = timestamp.strftime("%Y-%m-%d %H:%M:%S")
-            data = (str(ID),str(tripID),str(subtripID),str(trackpointID),str(stype),str(mode),str(lon),str(lat),str(timestamps),"s")
-            outputFile.write(csvSeparator.join(data) + "\n")
+            outputString = (str(ID),str(tripID),str(subtripID),str(trackpointID),str(stype),str(mode),str(lon),str(lat),str(timestamps),"s")
+            outputFile.write(csvSeparator.join(outputString) + "\n")
             ID += 1
-            #if ID == 10: sys.exit("Done for now... - Restart Python interpreter!")
+            trackpointID += 1
     elif segment['type'] == "move":
         # actual movement
         stype = segment['type']
@@ -68,13 +72,18 @@ for segment in json:
                 lon = trackpoints['lon']
                 lat = trackpoints['lat']
                 timestamp = datetime.datetime.strptime(str(trackpoints['time']), "%Y%m%dT%H%M%SZ")
-                if trackpointID == 1: prevTimestamp = timestamp
+                # adjust UTC timestamp by timezone offset
+                timestamp += datetime.timedelta(hours = UTCadjust)
+                if timestamp >= datetime.datetime.strptime(data[0]['date'], "%Y%m%d") + datetime.timedelta(days = 1):
+                    break               # stop at 23:59:59
+                if trackpointID == 1:
+                    prevTimestamp = timestamp
+                    prevLon = lon
+                    prevLat = lat
                 if ID == 1:
                     # special treatment for a day's first dataset
                     timestamp = datetime.datetime.strptime(data[0]['date'], "%Y%m%d")                    
                 else:
-                    # adjust UTC timestamp by timezone offset
-                    timestamp += datetime.timedelta(hours = UTCadjust)
                     if timestamp > prevTimestamp + datetime.timedelta(seconds = 1):
                         # save data for next timestep
                         nextLon = lon
@@ -88,18 +97,22 @@ for segment in json:
                             lon = prevLon + ((lonDiff / secsDiff) * i)
                             lat = prevLat + ((latDiff / secsDiff) * i)
                             timestamp = prevTimestamp + datetime.timedelta(seconds = i)
+                            if timestamp >= datetime.datetime.strptime(data[0]['date'], "%Y%m%d") + datetime.timedelta(days = 1):
+                                break               # stop at 23:59:59
                             timestamps = timestamp.strftime("%Y-%m-%d %H:%M:%S")
-                            data = (str(ID),str(tripID),str(subtripID),str(trackpointID),str(stype),str(mode),str(lon),str(lat),str(timestamps),"s")
-                            outputFile.write(csvSeparator.join(data) + "\n")
+                            outputString = (str(ID),str(tripID),str(subtripID),str(trackpointID),str(stype),str(mode),str(lon),str(lat),str(timestamps),"s")
+                            outputFile.write(csvSeparator.join(outputString) + "\n")
                             ID += 1
                             trackpointID += 1
                         # restore data for next timestep
                         lon = nextLon
                         lat = nextLat
                         timestamp = nextTimestamp
+                if timestamp >= datetime.datetime.strptime(data[0]['date'], "%Y%m%d") + datetime.timedelta(days = 1):
+                    break               # stop at 23:59:59
                 timestamps = timestamp.strftime("%Y-%m-%d %H:%M:%S")
-                data = (str(ID),str(tripID),str(subtripID),str(trackpointID),str(stype),str(mode),str(lon),str(lat),str(timestamps),"d")
-                outputFile.write(csvSeparator.join(data) + "\n")
+                outputString = (str(ID),str(tripID),str(subtripID),str(trackpointID),str(stype),str(mode),str(lon),str(lat),str(timestamps),"d")
+                outputFile.write(csvSeparator.join(outputString) + "\n")
                 trackpointID += 1
                 ID += 1
                 prevLon = lon
@@ -107,3 +120,5 @@ for segment in json:
                 prevTimestamp = timestamp
             subtripID += 1
     tripID += 1
+    if timestamp >= datetime.datetime.strptime(data[0]['date'], "%Y%m%d") + datetime.timedelta(days = 1):
+        break               # stop at 23:59:59
